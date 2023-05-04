@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
-
+using System;
+using UnityEngine.SceneManagement;
 
 public class PlayerMovement : MonoBehaviour
 {
@@ -17,31 +18,40 @@ public class PlayerMovement : MonoBehaviour
     private Vector2 mMoveInput;
     private Rigidbody2D mRb;
     private Animator mAnimator;
+    private SpriteRenderer mRenderer;
     private CapsuleCollider2D mCollider;
     private bool IsJumping = false;
     private bool IsFacingRight = true;
-    private RaycastHit2D raycastHitRight;
+    private bool IsAlive = true;
+    private RaycastHit2D raycastHit;
     private RaycastHit2D raycastHitLeft;
 
+    private LayerMask ground;
+
     public GameObject powerBar;   
-    public Image bar;
+    public Image powerBarImage;
 
     private void Start()
     {
+        GameManager.Instance.OnPlayerDeath += OnPlayerDeathDelegate;
+
         mRb = GetComponent<Rigidbody2D>();
         mAnimator = GetComponent<Animator>();
         mCollider = GetComponent<CapsuleCollider2D>();
+        mRenderer = GetComponent<SpriteRenderer>();
 
-        powerBar = GameObject.Find("Bar");
-        bar = powerBar.GetComponent<Image>();
+        powerBar = GameObject.Find("PowerBar");
+        powerBarImage = powerBar.GetComponent<Image>();
+
+        ground = LayerMask.GetMask("Ground");
     }
 
     private void Update()
     {
-        Vector2 raycastStart = new Vector2(transform.position.x + 0.6f, transform.position.y);
-
-        raycastHitRight = Physics2D.Raycast(raycastStart, Vector2.right, powerDistance);
-        raycastHitLeft = Physics2D.Raycast(raycastStart, Vector2.left, powerDistance);
+        if(!IsAlive)
+        {
+            return;
+        }
 
         mRb.velocity = new Vector2(
             mMoveInput.x * runSpeed,
@@ -76,12 +86,11 @@ public class PlayerMovement : MonoBehaviour
             mAnimator.SetBool("IsFalling", true);
         }
 
-        if (mCollider.IsTouchingLayers(LayerMask.GetMask("Ground")))
+        if (mCollider.IsTouchingLayers(ground))
         {
             // Toco el suelo
             mAnimator.SetBool("IsFalling", false);
         }
-
     }
 
     private void OnMove(InputValue value)
@@ -92,7 +101,7 @@ public class PlayerMovement : MonoBehaviour
     private void OnJump(InputValue value)
     {
         // Verificar si estamos en pleno salto o no
-        if (mCollider.IsTouchingLayers(LayerMask.GetMask("Ground")))
+        if (mCollider.IsTouchingLayers(ground))
         {
             if (value.isPressed)
             {
@@ -108,29 +117,52 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnPower(InputValue value)
     {
-        if (bar.fillAmount == 1)
+        if (powerBarImage.fillAmount == 1)
         {
-            if (IsFacingRight)
-            {
-                if (raycastHitRight.collider != null && raycastHitRight.collider.name == "Platforms")
-                {
-                    Debug.Log("MURIO");
-                }else
-                {
-                    transform.Translate(powerDistance,0,0);
-                }
-            }else
-            {
-                if (raycastHitLeft.collider != null && raycastHitLeft.collider.name == "Platforms")
-                {
-                    Debug.Log("MURIO");
-                }else
-                {
-                    transform.Translate(-(powerDistance),0,0);
-                }
-            }
+            raycastHit = Physics2D.Raycast(
+                transform.position, 
+                IsFacingRight ? Vector2.right : Vector2.left, 
+                powerDistance, 
+                ground.value
+            );
 
-            bar.fillAmount = 0;
+            if(raycastHit.collider != null)
+            {
+                transform.Translate(
+                    IsFacingRight ? powerDistance : -powerDistance,
+                    0,
+                    0
+                );
+                GameManager.Instance.PlayerDeath();
+            } else 
+            {
+                transform.Translate(
+                    IsFacingRight ? powerDistance : -powerDistance,
+                    0,
+                    0
+                );
+            }
+            powerBarImage.fillAmount = 0;
         }
+    }
+
+    private void OnPlayerDeathDelegate(object sender, EventArgs e)
+    {
+        GameManager.Instance.PlayerDrain();
+
+        mRb.bodyType = RigidbodyType2D.Static;
+        mAnimator.SetTrigger("HasDied");
+
+        IsAlive = false;
+    }
+
+    private void DisableSprite()
+    {
+        mRenderer.enabled = false;
+    }
+
+    private void RestartLevel()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name); 
     }
 }
